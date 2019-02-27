@@ -1,0 +1,10 @@
+WHITESPACE = _{ " " }
+
+number = @{
+    "-"?
+    ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
+}
+
+sexp = _{
+    number
+}

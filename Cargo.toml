@@ -1,0 +1,12 @@
+[package]
+name = "meetup-2019-02"
+version = "0.1.0"
+authors = ["Wojciech Polak <wojciech.polak@anixe.pl>"]
+edition = "2018"
+
+[dependencies]
+pest = "2.1.0"
+pest_derive = "2.1.0"
+
+[dev-dependencies]
+test-case-derive = "0.2.1"
