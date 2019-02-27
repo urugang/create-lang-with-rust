@@ -3,7 +3,8 @@
 pub enum Value {
     Number(i64),
     True,
-    False
+    False,
+    Obj(usize)
 }
 
 impl Value {
@@ -21,6 +22,19 @@ impl Value {
             els => panic!("Expect Boolean, found {:?}", els)
         }
     }
+
+    fn expect_ref(self) -> usize {
+        match self {
+            Value::Obj(loc)  => loc,
+            els => panic!("Expect Reference, found {:?}", els)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Obj {
+    Nil,
+    Cons(Value, Value)
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -43,19 +57,29 @@ pub enum ByteOp {
 
     Label(usize), //only for patching. Unreachable in runtime
     BrFalse(usize),
-    Jump(usize)
+    Jump(usize),
+
+    //5.
+    PushNil,
+    MkCons
 }
 
 pub struct Program {
     pub code: Vec<ByteOp>
 }
 
-pub fn run(program: Program) -> Option<Value> {
+pub struct ProgramResult {
+    pub result: Option<Value>,
+    pub heap: Vec<Obj>
+}
+
+pub fn run(program: Program) -> ProgramResult {
     use ByteOp::*;
     let code = &program.code[..];
     let mut pc = 0;
     let mut stack:  Vec<Value> = vec![];
     let mut locals: Vec<Value> = vec![];
+    let mut heap:   Vec<Obj>   = vec![ Obj::Nil ];
 
     while let Some(op) = code.get(pc) {
         pc += 1;
@@ -65,6 +89,7 @@ pub fn run(program: Program) -> Option<Value> {
             PushConstNumber(number) => stack.push(Value::Number(*number)),
             PushTrue => stack.push(Value::True),
             PushFalse => stack.push(Value::False),
+            PushNil => stack.push(Value::Obj(0)),
             Add => {
                 let b = stack.pop().expect("B in A + B").expect_number();
                 let a = stack.pop().expect("A in A + B").expect_number();
@@ -94,9 +119,19 @@ pub fn run(program: Program) -> Option<Value> {
             },
             Jump(loc) => {
                 pc = *loc;
+            },
+            MkCons => {
+                let right = stack.pop().expect("RIGHT in cons");
+                let left = stack.pop().expect("LEFT in cons");
+                let loc = heap.len();
+                heap.push(Obj::Cons(left, right));
+                stack.push(Value::Obj(loc));
             }
         }
     }
 
-    stack.pop()
+    ProgramResult {
+        result: stack.pop(),
+        heap:   heap
+    }
 }

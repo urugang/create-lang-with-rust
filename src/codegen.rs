@@ -44,6 +44,12 @@ impl Codegen {
                     self.visit(els);
                     self.emit(ByteOp::Label(merge));
                 },
+                [SExp::Ident("cons"), left, right] => {
+                    self.visit(left);
+                    self.visit(right);
+                    self.emit(ByteOp::MkCons);
+                },
+                [] => self.emit(ByteOp::PushNil),
                 _ => unreachable!("List: {:?}", l)
             }
             _ => unreachable!("SExp: {:?}", sexp)

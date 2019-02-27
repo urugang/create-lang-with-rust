@@ -24,12 +24,17 @@ fn compile(input: &str) -> Program {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::{Value, run};
+    use crate::runtime::{Value, Obj, run};
     use test_case_derive::test_case;
 
     fn driver(input: &str) -> Option<Value> {
         let program = compile(input);
-        run(program)
+        run(program).result
+    }
+
+    fn driver_heap(input: &str) -> Vec<Obj> {
+        let program = compile(input);
+        run(program).heap
     }
 
     #[test_case("5"  => Some(Value::Number(5))  :: "positive number")]
@@ -56,5 +61,10 @@ mod tests {
     #[test_case("(if true (- 10 3) (+ 2 3))" => Some(Value::Number(7)) :: "if true")]
     fn conditional(input: &str) -> Option<Value> {
         driver(input)
+    }
+
+    #[test_case("(cons 5 ())" => vec![Obj::Nil, Obj::Cons(Value::Number(5), Value::Obj(0))] :: "simple cons")]
+    fn lists(input: &str) -> Vec<Obj> {
+        driver_heap(input)
     }
 }
