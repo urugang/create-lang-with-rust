@@ -3,7 +3,8 @@ use crate::runtime::{ByteOp, Program};
 
 #[derive(Default)]
 pub struct Codegen {
-    code: Vec<ByteOp>
+    code: Vec<ByteOp>,
+    next_label: usize
 }
 
 impl Codegen {
@@ -17,6 +18,8 @@ impl Codegen {
     fn visit(&mut self, sexp: &SExp) {
         match sexp {
             SExp::ConstNumber(i) => self.emit(ByteOp::PushConstNumber(*i)),
+            SExp::Ident("true") => self.emit(ByteOp::PushTrue),
+            SExp::Ident("false") => self.emit(ByteOp::PushFalse),
             SExp::Var(pos) => self.emit(ByteOp::LoadLocal(*pos)),
             SExp::List(l) => match &l[..] {
                 [SExp::Ident("+"), first, second, rest..] => {
@@ -30,10 +33,27 @@ impl Codegen {
                     self.decl_vars(var_decls);
                     self.visit(body);
                 },
+                [SExp::Ident("if"), cond, then, els] => {
+                    self.visit(cond);
+                    let fals = self.next_label();
+                    let merge = self.next_label();
+                    self.emit(ByteOp::BrFalse(fals));
+                    self.visit(then);
+                    self.emit(ByteOp::Jump(merge));
+                    self.emit(ByteOp::Label(fals));
+                    self.visit(els);
+                    self.emit(ByteOp::Label(merge));
+                },
                 _ => unreachable!("List: {:?}", l)
             }
             _ => unreachable!("SExp: {:?}", sexp)
         }
+    }
+
+    fn next_label(&mut self) -> usize {
+        let label = self.next_label;
+        self.next_label += 1;
+        label
     }
 
     fn binary_op(&mut self, op: ByteOp, first: &SExp, second: &SExp, rest: &[SExp]) {
