@@ -7,8 +7,10 @@ use pest_derive::Parser;
 struct SExpParser;
 
 #[derive(Debug, PartialEq)]
-pub enum SExp {
-    ConstNumber(i64)
+pub enum SExp<'a> {
+    ConstNumber(i64),
+    Ident(&'a str),
+    List(Vec<SExp<'a>>)
 }
 
 pub fn parse(input: &str) -> SExp {
@@ -21,6 +23,13 @@ fn parse_sexp(pair: Pair<Rule>) -> SExp {
     match pair.as_rule() {
         Rule::number => {
             SExp::ConstNumber(str::parse(pair.as_str()).unwrap())
+        },
+        Rule::ident => {
+            SExp::Ident(pair.as_str())
+        },
+        Rule::list => {
+            let list = pair.into_inner().map(parse_sexp).collect();
+            SExp::List(list)
         },
         rule => unreachable!("RULE: {:?}", rule)
     }

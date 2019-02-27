@@ -4,10 +4,24 @@ pub enum Value {
     Number(i64)
 }
 
-#[derive(Debug, PartialEq)]
+impl Value {
+    fn expect_number(self) -> i64 {
+        match self {
+            Value::Number(i) => i,
+            els => panic!("Expected Number, found {:?}", els)
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ByteOp {
+    //1.
     Halt,
-    PushConstNumber(i64)
+    PushConstNumber(i64),
+
+    //2.
+    Add,
+    Sub
 }
 
 pub struct Program {
@@ -24,7 +38,19 @@ pub fn run(program: Program) -> Option<Value> {
         pc += 1;
         match op {
             Halt => break,
-            PushConstNumber(number) => stack.push(Value::Number(*number))
+            PushConstNumber(number) => stack.push(Value::Number(*number)),
+            Add => {
+                let b = stack.pop().expect("B in A + B").expect_number();
+                let a = stack.pop().expect("A in A + B").expect_number();
+
+                stack.push(Value::Number(a + b));
+            },
+            Sub => {
+                let b = stack.pop().expect("B in A - B").expect_number();
+                let a = stack.pop().expect("A in A - B").expect_number();
+
+                stack.push(Value::Number(a - b));
+            }
         }
     }
 

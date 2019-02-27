@@ -5,6 +5,18 @@ number = @{
     ~ ("0" | ASCII_NONZERO_DIGIT ~ ASCII_DIGIT*)
 }
 
+reserved = { "(" | ")" | WHITESPACE }
+
+ident = @{
+    (!reserved ~ ANY)+
+}
+
+list = {
+    "(" ~ sexp* ~ ")"
+}
+
 sexp = _{
-    number
+    list
+    | number
+    | ident
 }
