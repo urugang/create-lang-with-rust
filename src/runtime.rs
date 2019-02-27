@@ -21,7 +21,11 @@ pub enum ByteOp {
 
     //2.
     Add,
-    Sub
+    Sub,
+
+    //3.
+    AddLocal,
+    LoadLocal(usize),
 }
 
 pub struct Program {
@@ -32,7 +36,8 @@ pub fn run(program: Program) -> Option<Value> {
     use ByteOp::*;
     let code = &program.code[..];
     let mut pc = 0;
-    let mut stack: Vec<Value> = vec![];
+    let mut stack:  Vec<Value> = vec![];
+    let mut locals: Vec<Value> = vec![];
 
     while let Some(op) = code.get(pc) {
         pc += 1;
@@ -50,7 +55,15 @@ pub fn run(program: Program) -> Option<Value> {
                 let a = stack.pop().expect("A in A - B").expect_number();
 
                 stack.push(Value::Number(a - b));
-            }
+            },
+            AddLocal => {
+                let value = stack.pop().expect("variable to store");
+                locals.push(value);
+            },
+            LoadLocal(pos) => {
+                let value = locals.get(*pos).expect("local variable");
+                stack.push(*value);
+            },
         }
     }
 

@@ -3,14 +3,17 @@
 #![feature(slice_patterns)]
 
 mod parser;
+mod normalize;
 mod codegen;
 mod runtime;
 
 use runtime::Program;
+use normalize::Normalize;
 use codegen::Codegen;
 
 fn compile(input: &str) -> Program {
     let ast = parser::parse(input);
+    let ast = Normalize::default().run(ast);
     let program = Codegen::default().run(&ast);
     program
 }
@@ -38,6 +41,11 @@ mod tests {
     #[test_case("(+ 5 6 7)" => Some(Value::Number(18)) :: "variadic operator")]
     #[test_case("(- 10 2 1)" => Some(Value::Number(7)) :: "variadic operator precedence")]
     fn binary(input: &str) -> Option<Value> {
+        driver(input)
+    }
+
+    #[test_case("(let [(x 5) (y 6)] in (+ x y))" => Some(Value::Number(11)) :: "local two")]
+    fn local(input: &str) -> Option<Value> {
         driver(input)
     }
 }

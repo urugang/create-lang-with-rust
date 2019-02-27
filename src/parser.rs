@@ -6,12 +6,37 @@ use pest_derive::Parser;
 #[grammar = "grammar.pest"]
 struct SExpParser;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SExp<'a> {
     ConstNumber(i64),
     Ident(&'a str),
+    Var(usize),
     List(Vec<SExp<'a>>)
 }
+
+impl<'a> SExp<'a> {
+    pub fn expect_list(&self) -> Vec<&SExp<'a>> {
+        match self {
+            SExp::List(l) => l.iter().collect(),
+            _ => panic!("Expected List found {:?}", self)
+        }
+    }
+
+    pub fn expect_ident(&self) -> &'a str {
+        match self {
+            SExp::Ident(i) => i,
+            _ => panic!("Expected Ident found {:?}", self)
+        }
+    }
+
+    pub fn expect_var(&self) -> usize {
+        match self {
+            SExp::Var(i) => *i,
+            _ => panic!("Expected Var found {:?}", self)
+        }
+    }
+}
+
 
 pub fn parse(input: &str) -> SExp {
     let pair = SExpParser::parse(Rule::sexp, input)
