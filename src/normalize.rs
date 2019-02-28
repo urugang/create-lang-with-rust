@@ -10,11 +10,12 @@ struct Scope<'a> {
 #[derive(Default)]
 pub struct Normalize<'a> {
     scopes: Vec<Scope<'a>>,
-    next_id: usize
+    next_id: Vec<usize>,
 }
 
 impl<'a> Normalize<'a> {
     pub fn run(mut self, sexp: SExp<'a>) -> SExp<'a> {
+        self.next_id.push(0);
         self.scopes.push(Scope::default());
         self.visit(&sexp)
     }
@@ -25,7 +26,7 @@ impl<'a> Normalize<'a> {
                 [_let @ SExp::Ident("let"), SExp::List(var_decls), _in @ SExp::Ident("in"), body] => {
                     self.scopes.push(Scope::default());
                     let mut normalized = vec![];
-                    for var_decl in var_decls.into_iter().map(|var_decl| var_decl.expect_list()) {
+                    for var_decl in var_decls.iter().map(SExp::expect_list) {
                         let name = var_decl[0].expect_ident();
                         let id = self.next_id();
                         self.scope().locals.insert(name, id);
@@ -33,10 +34,29 @@ impl<'a> Normalize<'a> {
                         normalized.push(SExp::List(vec![ SExp::Var(id), value ]));
                     }
                     let body = self.visit(body);
+                    self.scopes.pop();
                     SExp::List(vec![_let.clone(), SExp::List(normalized), _in.clone(), body])
                 },
+                [SExp::Ident("let"), SExp::Ident(name), SExp::List(args), fn_body, SExp::Ident("in"), body] => {
+                    self.scopes.push(Scope::default());
+                    let id = self.next_id();
+                    self.scope().locals.insert(name, id);
+                    let name = SExp::Var(id);
+                    self.scopes.push(Scope::default());
+                    let mut normalized = vec![];
+                    for arg in args {
+                        let id = self.next_id();
+                        self.scope().locals.insert(arg.expect_ident(), id);
+                        normalized.push(SExp::Var(id));
+                    }
+                    let fn_body = self.visit(fn_body);
+                    self.scopes.pop();
+                    let body = self.visit(body);
+                    self.scopes.pop();
+                    SExp::List(vec![SExp::Ident("let"), name, SExp::List(normalized), fn_body, SExp::Ident("in"), body])
+                }
                 _ => {
-                    let list = l.into_iter().map(|sexp| self.visit(sexp)).collect();
+                    let list = l.iter().map(|sexp| self.visit(sexp)).collect();
                     SExp::List(list)
                 }
             },
@@ -60,8 +80,9 @@ impl<'a> Normalize<'a> {
     }
 
     fn next_id(&mut self) -> usize  {
-        let id = self.next_id;
-        self.next_id += 1;
+        let id = *self.next_id.last().unwrap();
+        let next_id = self.next_id.last_mut().unwrap();
+        *next_id += 1;
         id
     }
 

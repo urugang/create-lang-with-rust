@@ -28,6 +28,7 @@ mod tests {
     use test_case_derive::test_case;
 
     fn driver(input: &str) -> Option<Value> {
+        dbg!(&input);
         let program = compile(input);
         run(program).result
     }
@@ -66,5 +67,10 @@ mod tests {
     #[test_case("(cons 5 ())" => vec![Obj::Nil, Obj::Cons(Value::Number(5), Value::Obj(0))] :: "simple cons")]
     fn lists(input: &str) -> Vec<Obj> {
         driver_heap(input)
+    }
+
+    #[test_case("(let add [x y] (+ x y) in (add 40 2))" => Some(Value::Number(42)) :: "simple func")]
+    fn functions(input: &str) -> Option<Value> {
+        driver(input)
     }
 }

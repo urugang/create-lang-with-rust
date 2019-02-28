@@ -31,6 +31,7 @@ impl Patch {
                 ByteOp::Label(_) => None,
                 ByteOp::Jump(label) => Some(ByteOp::Jump(self.labels[label])),
                 ByteOp::BrFalse(label) => Some(ByteOp::BrFalse(self.labels[label])),
+                ByteOp::PushFunc(label) => Some(ByteOp::PushFunc(self.labels[label])),
                 op => Some(*op)
             }).collect();
     }

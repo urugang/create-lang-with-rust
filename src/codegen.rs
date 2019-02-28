@@ -1,26 +1,45 @@
+use std::collections::BTreeMap;
 use crate::parser::SExp;
 use crate::runtime::{ByteOp, Program};
 
 #[derive(Default)]
 pub struct Codegen {
     code: Vec<ByteOp>,
-    next_label: usize
+    func_code: Vec<ByteOp>,
+    next_label: usize,
+    locals: BTreeMap<usize, usize>,
+    next_local: usize,
 }
 
 impl Codegen {
     pub fn run(mut self, sexp: &SExp) -> Program {
         self.visit(sexp);
+        self.code.append(&mut self.func_code);
         Program {
             code: self.code
         }
     }
 
+    pub fn with_label(mut self, label: usize) -> Self {
+        self.emit(ByteOp::Label(label));
+        self
+    }
+
+    pub fn with_args(mut self, args: Vec<usize>) -> Self {
+        for id in args {
+            let local = self.next_local();
+            self.locals.insert(id, local);
+        }
+
+        self
+    }
+    
     fn visit(&mut self, sexp: &SExp) {
         match sexp {
             SExp::ConstNumber(i) => self.emit(ByteOp::PushConstNumber(*i)),
             SExp::Ident("true") => self.emit(ByteOp::PushTrue),
             SExp::Ident("false") => self.emit(ByteOp::PushFalse),
-            SExp::Var(pos) => self.emit(ByteOp::LoadLocal(*pos)),
+            SExp::Var(pos) => self.emit(ByteOp::LoadLocal(self.locals[pos])),
             SExp::List(l) => match &l[..] {
                 [SExp::Ident("+"), first, second, rest..] => {
                     self.binary_op(ByteOp::Add, first, second, rest);
@@ -28,6 +47,22 @@ impl Codegen {
                 [SExp::Ident("-"), first, second, rest..] => {
                     self.binary_op(ByteOp::Sub, first, second, rest);
                 },
+                [SExp::Ident("let"), SExp::Var(func_ptr), SExp::List(args), fn_body, SExp::Ident("in"), body] => {
+                    let label = self.next_label();
+                    let mut program = Codegen::default()
+                        .with_label(label)
+                        .with_args(args.iter().map(SExp::expect_var).collect())
+                        .run(fn_body);
+                    program.code.push(ByteOp::Return(1));
+                    self.func_code.append(&mut program.code);
+
+                    self.emit(ByteOp::PushFunc(label));
+                    self.emit(ByteOp::AddLocal);
+                    let local = self.next_local();
+                    self.locals.insert(*func_ptr, local);
+                    
+                    self.visit(body);
+                }
                 [SExp::Ident("let"), SExp::List(var_decls), SExp::Ident("in"), body] => {
                     dbg!(&body);
                     self.decl_vars(var_decls);
@@ -49,6 +84,13 @@ impl Codegen {
                     self.visit(right);
                     self.emit(ByteOp::MkCons);
                 },
+                [callee, args..] => {
+                    for arg in args  {
+                        self.visit(arg);
+                    }
+                    self.visit(callee);
+                    self.emit(ByteOp::Call(args.len()));
+                },
                 [] => self.emit(ByteOp::PushNil),
                 _ => unreachable!("List: {:?}", l)
             }
@@ -60,6 +102,12 @@ impl Codegen {
         let label = self.next_label;
         self.next_label += 1;
         label
+    }
+
+    fn next_local(&mut self) -> usize {
+        let local = self.next_local;
+        self.next_local += 1;
+        local
     }
 
     fn binary_op(&mut self, op: ByteOp, first: &SExp, second: &SExp, rest: &[SExp]) {
@@ -75,10 +123,12 @@ impl Codegen {
     fn decl_vars(&mut self, var_decls: &[SExp]) {
         for var_decl in var_decls {
             let var_decl = var_decl.expect_list();
-            let _id = var_decl[0].expect_var();
+            let id = var_decl[0].expect_var();
             let value = var_decl[1];
             self.visit(value);
             self.emit(ByteOp::AddLocal);
+            let local = self.next_local();
+            self.locals.insert(id, local);
         }
     }
 

@@ -4,6 +4,7 @@ pub enum Value {
     Number(i64),
     True,
     False,
+    Function(usize),
     Obj(usize)
 }
 
@@ -27,6 +28,13 @@ impl Value {
         match self {
             Value::Obj(loc)  => loc,
             els => panic!("Expect Reference, found {:?}", els)
+        }
+    }
+
+    fn expect_func(self) -> usize {
+        match self {
+            Value::Function(loc)  => loc,
+            els => panic!("Expect Function, found {:?}", els)
         }
     }
 }
@@ -61,7 +69,12 @@ pub enum ByteOp {
 
     //5.
     PushNil,
-    MkCons
+    MkCons,
+    
+    //6.
+    PushFunc(usize), //label
+    Call(usize), // argc
+    Return(usize) // retc
 }
 
 pub struct Program {
@@ -73,12 +86,19 @@ pub struct ProgramResult {
     pub heap: Vec<Obj>
 }
 
+#[derive(Default)]
+struct Frame {
+    return_pc: Option<usize>,
+    stack:  Vec<Value>,
+    locals: Vec<Value>,
+}
+
 pub fn run(program: Program) -> ProgramResult {
     use ByteOp::*;
     let code = &program.code[..];
     let mut pc = 0;
-    let mut stack:  Vec<Value> = vec![];
-    let mut locals: Vec<Value> = vec![];
+    let mut frames = vec![ Frame::default() ];
+    let mut frame = frames.last_mut().unwrap();
     let mut heap:   Vec<Obj>   = vec![ Obj::Nil ];
 
     while let Some(op) = code.get(pc) {
@@ -86,32 +106,33 @@ pub fn run(program: Program) -> ProgramResult {
         match op {
             Halt => break,
             Label(_) => unreachable!("Unreachable operation: {:?}", op),
-            PushConstNumber(number) => stack.push(Value::Number(*number)),
-            PushTrue => stack.push(Value::True),
-            PushFalse => stack.push(Value::False),
-            PushNil => stack.push(Value::Obj(0)),
+            PushConstNumber(number) => frame.stack.push(Value::Number(*number)),
+            PushTrue => frame.stack.push(Value::True),
+            PushFalse => frame.stack.push(Value::False),
+            PushNil => frame.stack.push(Value::Obj(0)),
+            PushFunc(func) => frame.stack.push(Value::Function(*func)),
             Add => {
-                let b = stack.pop().expect("B in A + B").expect_number();
-                let a = stack.pop().expect("A in A + B").expect_number();
+                let b = frame.stack.pop().expect("B in A + B").expect_number();
+                let a = frame.stack.pop().expect("A in A + B").expect_number();
 
-                stack.push(Value::Number(a + b));
+                frame.stack.push(Value::Number(a + b));
             },
             Sub => {
-                let b = stack.pop().expect("B in A - B").expect_number();
-                let a = stack.pop().expect("A in A - B").expect_number();
+                let b = frame.stack.pop().expect("B in A - B").expect_number();
+                let a = frame.stack.pop().expect("A in A - B").expect_number();
 
-                stack.push(Value::Number(a - b));
+                frame.stack.push(Value::Number(a - b));
             },
             AddLocal => {
-                let value = stack.pop().expect("variable to store");
-                locals.push(value);
+                let value = frame.stack.pop().expect("variable to store");
+                frame.locals.push(value);
             },
             LoadLocal(pos) => {
-                let value = locals.get(*pos).expect("local variable");
-                stack.push(*value);
+                let value = frame.locals.get(*pos).expect("local variable");
+                frame.stack.push(*value);
             },
             BrFalse(loc) => {
-                let value = stack.pop().expect("condition in if expression").expect_bool();
+                let value = frame.stack.pop().expect("condition in if expression").expect_bool();
                 
                 if !value {
                     pc = *loc;
@@ -121,17 +142,40 @@ pub fn run(program: Program) -> ProgramResult {
                 pc = *loc;
             },
             MkCons => {
-                let right = stack.pop().expect("RIGHT in cons");
-                let left = stack.pop().expect("LEFT in cons");
+                let right = frame.stack.pop().expect("RIGHT in cons");
+                let left = frame.stack.pop().expect("LEFT in cons");
                 let loc = heap.len();
                 heap.push(Obj::Cons(left, right));
-                stack.push(Value::Obj(loc));
+                frame.stack.push(Value::Obj(loc));
+            },
+            Call(argc) => {
+                let loc = frame.stack.pop().expect("Function pointer").expect_func();
+                let len = frame.stack.len() - argc;
+                let args = frame.stack.split_off(len);
+                let next_frame = Frame {
+                    return_pc: Some(pc),
+                    locals: args,
+                    ..Frame::default()
+                };
+                frames.push(next_frame);
+                frame = frames.last_mut().unwrap();
+                pc = loc;
+            },
+            Return(retc) => {
+                let len = frame.stack.len() - retc;
+                let values = frame.stack.split_off(len);
+
+                frames.pop();
+                frame = frames.last_mut().unwrap();
+                for val in values {
+                    frame.stack.push(val);
+                }
             }
         }
     }
 
     ProgramResult {
-        result: stack.pop(),
+        result: frame.stack.pop(),
         heap:   heap
     }
 }
