@@ -37,6 +37,10 @@ impl Value {
             els => panic!("Expect Function, found {:?}", els)
         }
     }
+
+    fn boolean(b: bool) -> Self {
+        if b { Value::True } else { Value::False }
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -74,9 +78,13 @@ pub enum ByteOp {
     //6.
     PushFunc(usize), //label
     Call(usize), // argc
-    Return(usize) // retc
+    Return(usize), // retc
+
+    //7.
+    Less
 }
 
+#[derive(Debug)]
 pub struct Program {
     pub code: Vec<ByteOp>
 }
@@ -86,7 +94,7 @@ pub struct ProgramResult {
     pub heap: Vec<Obj>
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct Frame {
     return_pc: Option<usize>,
     stack:  Vec<Value>,
@@ -122,6 +130,12 @@ pub fn run(program: Program) -> ProgramResult {
                 let a = frame.stack.pop().expect("A in A - B").expect_number();
 
                 frame.stack.push(Value::Number(a - b));
+            },
+            Less => {
+                let b = frame.stack.pop().expect("B in A - B").expect_number();
+                let a = frame.stack.pop().expect("A in A - B").expect_number();
+
+                frame.stack.push(Value::boolean(a < b));
             },
             AddLocal => {
                 let value = frame.stack.pop().expect("variable to store");
@@ -165,10 +179,15 @@ pub fn run(program: Program) -> ProgramResult {
                 let len = frame.stack.len() - retc;
                 let values = frame.stack.split_off(len);
 
+                let loc = frame.return_pc;
+
                 frames.pop();
                 frame = frames.last_mut().unwrap();
                 for val in values {
                     frame.stack.push(val);
+                }
+                if let Some(loc) = loc {
+                    pc = loc;
                 }
             }
         }
@@ -176,6 +195,6 @@ pub fn run(program: Program) -> ProgramResult {
 
     ProgramResult {
         result: frame.stack.pop(),
-        heap:   heap
+        heap
     }
 }

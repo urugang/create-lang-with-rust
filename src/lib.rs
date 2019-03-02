@@ -17,8 +17,7 @@ fn compile(input: &str) -> Program {
     let ast = parser::parse(input);
     let ast = Normalize::default().run(ast);
     let program = Codegen::default().run(&ast);
-    let program = Patch::default().run(program);
-    program
+    Patch::default().run(program)
 }
 
 #[cfg(test)]
@@ -70,6 +69,9 @@ mod tests {
     }
 
     #[test_case("(let add [x y] (+ x y) in (add 40 2))" => Some(Value::Number(42)) :: "simple func")]
+    #[test_case("(let fib [n] 
+        (if (< n 2) n (+ (fib (- n 1)) (fib (- n 2)) ) )
+    in (fib 8))" => Some(Value::Number(21)) :: "simple recursion")]
     fn functions(input: &str) -> Option<Value> {
         driver(input)
     }

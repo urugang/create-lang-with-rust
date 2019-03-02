@@ -1,26 +1,45 @@
 use std::collections::BTreeMap;
 use crate::parser::SExp;
 use crate::runtime::{ByteOp, Program};
+use lazy_static::lazy_static;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Default)]
 pub struct Codegen {
     code: Vec<ByteOp>,
     func_code: Vec<ByteOp>,
-    next_label: usize,
     locals: BTreeMap<usize, usize>,
     next_local: usize,
+    func: Option<FnInfo>
+}
+
+#[derive(Debug)]
+struct FnInfo {
+    var: usize,
+    label: usize
+}
+
+lazy_static! {
+    static ref ID_COUNT: AtomicUsize = AtomicUsize::new(0);
 }
 
 impl Codegen {
     pub fn run(mut self, sexp: &SExp) -> Program {
         self.visit(sexp);
+        if self.func.is_none() {
+            self.emit(ByteOp::Halt);
+        }
         self.code.append(&mut self.func_code);
         Program {
             code: self.code
         }
     }
 
-    pub fn with_label(mut self, label: usize) -> Self {
+    pub fn with_func(mut self, var: usize, label: usize) -> Self {
+        let info = FnInfo {
+            var, label
+        };
+        self.func = Some(info);
         self.emit(ByteOp::Label(label));
         self
     }
@@ -39,7 +58,14 @@ impl Codegen {
             SExp::ConstNumber(i) => self.emit(ByteOp::PushConstNumber(*i)),
             SExp::Ident("true") => self.emit(ByteOp::PushTrue),
             SExp::Ident("false") => self.emit(ByteOp::PushFalse),
-            SExp::Var(pos) => self.emit(ByteOp::LoadLocal(self.locals[pos])),
+            SExp::Var(pos) if Some(*pos) == self.func.as_ref().map(|f| f.var) => {
+                let f = self.func.as_ref().unwrap();
+                self.emit(ByteOp::PushFunc(f.label));
+            },
+            SExp::Var(pos) => {
+                let local = *self.locals.get(pos).unwrap_or_else(|| panic!("Local variable at: {:?}", pos));
+                self.emit(ByteOp::LoadLocal(local))
+            },
             SExp::List(l) => match &l[..] {
                 [SExp::Ident("+"), first, second, rest..] => {
                     self.binary_op(ByteOp::Add, first, second, rest);
@@ -47,10 +73,13 @@ impl Codegen {
                 [SExp::Ident("-"), first, second, rest..] => {
                     self.binary_op(ByteOp::Sub, first, second, rest);
                 },
+                [SExp::Ident("<"), first, second, rest..] => {
+                    self.binary_op(ByteOp::Less, first, second, rest);
+                },
                 [SExp::Ident("let"), SExp::Var(func_ptr), SExp::List(args), fn_body, SExp::Ident("in"), body] => {
                     let label = self.next_label();
                     let mut program = Codegen::default()
-                        .with_label(label)
+                        .with_func(*func_ptr, label)
                         .with_args(args.iter().map(SExp::expect_var).collect())
                         .run(fn_body);
                     program.code.push(ByteOp::Return(1));
@@ -64,7 +93,6 @@ impl Codegen {
                     self.visit(body);
                 }
                 [SExp::Ident("let"), SExp::List(var_decls), SExp::Ident("in"), body] => {
-                    dbg!(&body);
                     self.decl_vars(var_decls);
                     self.visit(body);
                 },
@@ -99,9 +127,7 @@ impl Codegen {
     }
 
     fn next_label(&mut self) -> usize {
-        let label = self.next_label;
-        self.next_label += 1;
-        label
+        ID_COUNT.fetch_add(1, Ordering::SeqCst)
     }
 
     fn next_local(&mut self) -> usize {
